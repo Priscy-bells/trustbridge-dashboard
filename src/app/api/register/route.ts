@@ -130,9 +130,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const body = (await request.json()) as { stellarAddress?: string };
+    const body = (await request.json()) as unknown;
 
-    // Validate input
+    // Validate input using Zod schema
     const validationErrors = validateRegistrationInput(body);
     if (validationErrors.length > 0) {
       return NextResponse.json(
@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const stellarAddress = body.stellarAddress!.trim();
+    const stellarAddress = (body as any).stellarAddress.trim();
 
     const existing = await prisma.registration.findFirst({
       where: { stellarAddress },

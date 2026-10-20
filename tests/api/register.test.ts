@@ -316,3 +316,76 @@ describe("POST /api/register — error codes", () => {
   });
 });
 
+
+// ── Zod validation helpers ─────────────────────────────────────────────────
+
+describe("registerPayloadSchema — Zod validation", () => {
+  import { registrationPayloadSchema, validateRegistrationInput } from "@/lib/register-validation";
+
+  it("validates a well-formed Stellar address", () => {
+    const validAddress = "GDXNXL25GDM3N5LAR5FALA3VSGHFET3EOKLXRP3ITPPMR3PISTQSKSFS";
+    const result = registrationPayloadSchema.safeParse({ stellarAddress: validAddress });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.stellarAddress).toBe(validAddress);
+    }
+  });
+
+  it("rejects an address with incorrect length", () => {
+    const shortAddress = "GDXNXL25GDM3N5LAR5FALA3VSGHFET3EOKLXRP3ITPPMR3PISTQSK";
+    const errors = validateRegistrationInput({ stellarAddress: shortAddress });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.message.includes("56"))).toBe(true);
+  });
+
+  it("rejects an address that doesn't start with G", () => {
+    const badAddress = "AXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+    const errors = validateRegistrationInput({ stellarAddress: badAddress });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.message.includes("start"))).toBe(true);
+  });
+
+  it("rejects an empty string", () => {
+    const errors = validateRegistrationInput({ stellarAddress: "" });
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.some((e) => e.message.includes("required"))).toBe(true);
+  });
+
+  it("rejects whitespace-only input", () => {
+    const errors = validateRegistrationInput({ stellarAddress: "   " });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("rejects missing stellarAddress field", () => {
+    const errors = validateRegistrationInput({});
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it("rejects non-string values", () => {
+    const errors1 = validateRegistrationInput({ stellarAddress: 123 });
+    const errors2 = validateRegistrationInput({ stellarAddress: null });
+    const errors3 = validateRegistrationInput({ stellarAddress: undefined });
+    
+    expect(errors1.length).toBeGreaterThan(0);
+    expect(errors2.length).toBeGreaterThan(0);
+    expect(errors3.length).toBeGreaterThan(0);
+  });
+
+  it("trims whitespace before validation", () => {
+    const validAddress = "GDXNXL25GDM3N5LAR5FALA3VSGHFET3EOKLXRP3ITPPMR3PISTQSKSFS";
+    const result = registrationPayloadSchema.safeParse({ 
+      stellarAddress: `  ${validAddress}  ` 
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.stellarAddress).toBe(validAddress);
+    }
+  });
+
+  it("rejects an address with invalid checksum (looks valid but fails StrKey validation)", () => {
+    // This is an address that has correct format but fails checksum
+    const invalidChecksum = "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXF";
+    const errors = validateRegistrationInput({ stellarAddress: invalidChecksum });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});

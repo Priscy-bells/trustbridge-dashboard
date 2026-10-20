@@ -1,5 +1,6 @@
 import "server-only";
 
+import { z } from "zod";
 import { isValidStellarAddress } from "@/lib/stellar";
 
 export interface RegistrationValidationError {
@@ -7,56 +8,79 @@ export interface RegistrationValidationError {
   message: string;
 }
 
-export interface RegistrationInput {
-  stellarAddress?: unknown;
+/**
+ * Shared Zod field validators for registration payload.
+ */
+const stellarAddressField = z
+  .string()
+  .trim()
+  .min(1, "Stellar address is required")
+  .max(56, "Stellar address must be 56 characters or fewer")
+  .refine(
+    (addr) => addr.length === 56,
+    "Stellar address must be exactly 56 characters"
+  )
+  .refine(
+    (addr) => addr.startsWith("G"),
+    "Stellar address must start with 'G'"
+  )
+  .refine(
+    (addr) => isValidStellarAddress(addr),
+    "Invalid Stellar G-address format — checksum failed or invalid encoding"
+  );
+
+/**
+ * Zod schema for registration POST request body.
+ * Provides type-safe validation with structured error reporting.
+ */
+export const registrationPayloadSchema = z.object({
+  stellarAddress: stellarAddressField,
+});
+
+export type RegistrationPayload = z.infer<typeof registrationPayloadSchema>;
+
+/**
+ * Coerce unknown input to a plain object for validation.
+ * Used when parsing JSON request bodies.
+ */
+export const registrationInputSchema = z
+  .unknown()
+  .transform((val) => {
+    if (typeof val === "object" && val !== null) {
+      return val as Record<string, unknown>;
+    }
+    return {};
+  })
+  .pipe(registrationPayloadSchema);
+
+/**
+ * Validates registration form input using Zod.
+ * Returns an array of validation errors (backward-compatible format), empty if input is valid.
+ *
+ * Exported for backward compatibility with existing callers.
+ * Prefer using `registrationPayloadSchema.safeParse()` directly in new code.
+ */
+export function validateRegistrationInput(
+  input: unknown
+): RegistrationValidationError[] {
+  const result = registrationInputSchema.safeParse(input);
+
+  if (!result.success) {
+    return result.error.errors.map((err) => ({
+      field: err.path.join(".") || "stellarAddress",
+      message: err.message,
+    }));
+  }
+
+  return [];
 }
 
 /**
- * Validates registration form input.
- * Returns an array of validation errors, empty if input is valid.
+ * Type-safe validation that throws on error.
+ * Useful in typed contexts where you know input should be valid.
  */
-export function validateRegistrationInput(
-  input: RegistrationInput
-): RegistrationValidationError[] {
-  const errors: RegistrationValidationError[] = [];
-
-  // Validate stellar address is provided
-  if (
-    typeof input.stellarAddress !== "string" ||
-    !input.stellarAddress.trim()
-  ) {
-    errors.push({
-      field: "stellarAddress",
-      message: "Stellar address is required",
-    });
-    return errors; // Early exit since other validations depend on address existing
-  }
-
-  const address = input.stellarAddress.trim();
-
-  // Validate address format
-  if (!isValidStellarAddress(address)) {
-    errors.push({
-      field: "stellarAddress",
-      message: "Invalid Stellar G-address format",
-    });
-  }
-
-  // Validate address length (Stellar public keys are 56 characters)
-  if (address.length !== 56) {
-    errors.push({
-      field: "stellarAddress",
-      message: "Stellar address must be exactly 56 characters",
-    });
-  }
-
-  // Validate address starts with G (Stellar public key prefix)
-  if (!address.startsWith("G")) {
-    errors.push({
-      field: "stellarAddress",
-      message: "Stellar address must start with 'G'",
-    });
-  }
-
-  return errors;
+export function validateRegistrationPayload(
+  input: unknown
+): RegistrationPayload {
+  return registrationPayloadSchema.parse(input);
 }
